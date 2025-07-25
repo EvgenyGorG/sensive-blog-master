@@ -1,4 +1,4 @@
-from django.db.models import Count, Prefetch
+from django.db.models import Count
 from django.shortcuts import render, get_object_or_404
 from blog.models import Post, Tag
 
@@ -44,12 +44,30 @@ def index(request):
         'page_posts': [serialize_post(post) for post in most_fresh_posts],
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
+
     return render(request, 'index.html', context)
 
 
 def post_detail(request, slug):
-    post = get_object_or_404(Post, slug=slug)
-    comments = post.comments.all().prefetch_related('author')
+    posts_with_additional_info = (
+        Post.objects.all()
+        .annotate(likes_count=Count('likes'))
+        .get_with_tags_and_author()
+    )
+    post = get_object_or_404(posts_with_additional_info, slug=slug)
+
+    comments = post.comments.select_related('author')
+
+    related_tags = post.tags.all().annotate(related_posts_count=Count('posts'))
+
+    most_popular_tags = Tag.objects.popular()[:5]
+
+    most_popular_posts = (
+        Post.objects.popular()
+        .get_with_tags_and_author()
+        .fetch_with_comments_count()
+    )[:5]
+
     serialized_comments = []
 
     for comment in comments:
@@ -59,27 +77,17 @@ def post_detail(request, slug):
             'author': comment.author.username,
         })
 
-    related_tags = post.tags.all().annotate(related_posts_count=Count('posts'))
-
     serialized_post = {
         'title': post.title,
         'text': post.text,
         'author': post.author.username,
         'comments': serialized_comments,
-        'likes_amount': post.likes.count(),
+        'likes_amount': post.likes_count,
         'image_url': post.image.url if post.image else None,
         'published_at': post.published_at,
         'slug': post.slug,
         'tags': [serialize_tag(tag) for tag in related_tags],
     }
-
-    most_popular_tags = Tag.objects.popular()[:5]
-
-    most_popular_posts = (
-        Post.objects.popular()
-        .get_with_tags_and_author()
-        .fetch_with_comments_count()
-    )[:5]
 
     context = {
         'post': serialized_post,
@@ -116,6 +124,7 @@ def tag_filter(request, tag_title):
             serialize_post(post) for post in most_popular_posts
         ],
     }
+
     return render(request, 'posts-list.html', context)
 
 

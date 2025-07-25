@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, OuterRef, Subquery
 from django.urls import reverse
 from django.contrib.auth.models import User
 
@@ -27,28 +27,20 @@ class PostQuerySet(models.QuerySet):
 
     def fetch_with_comments_count(self):
         """
-        Добавляет к каждому объекту поста атрибут comments_count с количеством комментариев.
+        Добавляет к каждому объекту поста поле comments_count с количеством комментариев.
 
         Метод оптимизирован для случаев, когда к исходному набору постов уже применён метод .annotate().
         Позволяет избежать дублирования аннотаций и снижает количество запросов к базе данных.
 
         Returns:
-        list: Исходный набор постов с добавленным атрибутом comments_count.
+        QuerySet: Исходный набор постов с добавленным полем comments_count.
         """
 
-        posts_ids = [post.id for post in self]
+        comments_subquery = Post.objects.filter(id=OuterRef('pk')).annotate(
+            comments_count=Count('comments')
+        ).values('comments_count')
 
-        posts_with_comments = Post.objects.all().filter(
-            id__in=posts_ids
-        ).annotate(comments_count=Count('comments'))
-
-        ids_and_comments = posts_with_comments.values_list('id', 'comments_count')
-        count_for_id = dict(ids_and_comments)
-
-        for post in self:
-            post.comments_count = count_for_id[post.id]
-
-        return self
+        return self.annotate(comments_count=Subquery(comments_subquery[:1]))
 
 
 class TagQuerySet(models.QuerySet):
