@@ -1,6 +1,6 @@
 from django.db.models import Count, Prefetch
-from django.shortcuts import render
-from blog.models import Comment, Post, Tag
+from django.shortcuts import render, get_object_or_404
+from blog.models import Post, Tag
 
 
 def serialize_tag(tag):
@@ -54,8 +54,8 @@ def index(request):
 def post_detail(request, slug):
     tags_with_posts_count = Tag.objects.all().annotate(related_posts_count=Count('posts'))
 
-    post = Post.objects.get(slug=slug)
-    comments = Comment.objects.filter(post=post).prefetch_related('author')
+    post = get_object_or_404(Post, slug=slug)
+    comments = post.comments.all().prefetch_related('author')
     serialized_comments = []
 
     for comment in comments:
@@ -98,7 +98,7 @@ def post_detail(request, slug):
 
 
 def tag_filter(request, tag_title):
-    tag = Tag.objects.get(title=tag_title)
+    tag = get_object_or_404(Tag, title=tag_title)
 
     tags_with_posts_count = Tag.objects.all().annotate(related_posts_count=Count('posts'))
 
